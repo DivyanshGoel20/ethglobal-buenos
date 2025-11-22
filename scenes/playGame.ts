@@ -15,9 +15,15 @@ export class PlayGame extends Phaser.Scene {
     controlKeys : any;                                                  // keys used to move the player
     player      : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;    // the player
     enemyGroup  : Phaser.Physics.Arcade.Group;                          // group with all enemies
+    enemySprites: string[] = [];                                        // array of available enemy sprite keys
 
     // method to be called once the instance has been created
-    create() : void {
+    create(data? : any) : void {
+
+        // get enemy sprites array from scene data
+        if (data && data.enemySprites) {
+            this.enemySprites = data.enemySprites;
+        }
 
         // add player, enemies group and bullets group
         this.player = this.physics.add.sprite(GameOptions.gameSize.width / 2, GameOptions.gameSize.height / 2, 'player');
@@ -43,7 +49,11 @@ export class PlayGame extends Phaser.Scene {
             loop        : true,
             callback    : () => {
                 const spawnPoint : Phaser.Geom.Point = Phaser.Geom.Rectangle.RandomOutside(outerRectangle, innerRectangle);
-                const enemy : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody = this.physics.add.sprite(spawnPoint.x, spawnPoint.y, 'enemy'); 
+                // randomly select an enemy sprite from available options
+                const randomEnemyKey : string = this.enemySprites[Math.floor(Math.random() * this.enemySprites.length)];
+                const enemy : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody = this.physics.add.sprite(spawnPoint.x, spawnPoint.y, randomEnemyKey);
+                // set consistent size for all enemy tokens
+                enemy.setDisplaySize(60, 60);
                 this.enemyGroup.add(enemy); 
             },
         });
@@ -55,7 +65,18 @@ export class PlayGame extends Phaser.Scene {
             callback    : () => {
                 const closestEnemy : any = this.physics.closest(this.player, this.enemyGroup.getMatching('visible', true));
                 if (closestEnemy != null) {
-                    const bullet : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody = this.physics.add.sprite(this.player.x, this.player.y, 'bullet'); 
+                    const bullet : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody = this.physics.add.sprite(this.player.x, this.player.y, 'bullet');
+                    
+                    // set bullet display size (make it smaller)
+                    bullet.setDisplaySize(20, 20);
+                    
+                    // calculate angle from player to enemy and rotate bullet to face that direction
+                    const angle : number = Phaser.Math.Angle.Between(this.player.x, this.player.y, closestEnemy.x, closestEnemy.y);
+                    bullet.setRotation(angle);
+                    
+                    // set smaller collision body (keep collision box small)
+                    bullet.body.setSize(10, 10);
+                    
                     bulletGroup.add(bullet); 
                     this.physics.moveToObject(bullet, closestEnemy, GameOptions.bulletSpeed);
                 }

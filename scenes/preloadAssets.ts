@@ -9,20 +9,28 @@ export class PreloadAssets extends Phaser.Scene {
             key : 'PreloadAssets'
         });
     }
+
+    // array to store enemy sprite keys
+    enemySprites : string[] = ['aave', 'bnb', 'btc', 'doge', 'eth', 'sol', 'usdc', 'usdt', 'world', 'xrp'];
   
     // method to be called during class preloading
     preload() : void {
  
-        // load images
-        this.load.image('enemy', 'assets/sprites/enemy.png');   // the big circle, aka the planet
-        this.load.image('player', 'assets/sprites/player.png'); // the player
-        this.load.image('bullet', 'assets/sprites/bullet.png'); // the spike 
+        // load all enemy sprites
+        this.enemySprites.forEach((enemyName : string) => {
+            this.load.image(enemyName, `assets/sprites/enemies/${enemyName}.png`);
+        });
+
+        // load player sprite
+        this.load.image('player', 'assets/sprites/player.png');
+
+        this.load.image('bullet', 'assets/sprites/bullet.png');
     }
   
     // method to be executed when the scene is created
     create() : void {
 
-        // start PlayGame scene
-        this.scene.start('PlayGame');
+        // pass enemy sprites array to PlayGame scene
+        this.scene.start('PlayGame', { enemySprites: this.enemySprites });
     }
 }
