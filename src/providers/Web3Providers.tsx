@@ -32,11 +32,36 @@ export const filecoinCalibration: Chain = {
 	testnet: true,
 } as const satisfies Chain
 
+// World Chain Sepolia Testnet
+export const worldChainSepolia: Chain = {
+	id: 4801,
+	name: 'World Chain Sepolia',
+	nativeCurrency: {
+		name: 'Ether',
+		symbol: 'ETH',
+		decimals: 18,
+	},
+	rpcUrls: {
+		default: {
+			// Empty array forces wagmi to use wallet's RPC provider when connected
+			// This avoids CORS issues since wallet providers handle RPC calls
+			http: [],
+		},
+	},
+	blockExplorers: {
+		default: {
+			name: 'World Chain Explorer',
+			url: 'https://sepolia-explorer.worldchain.org',
+		},
+	},
+	testnet: true,
+} as const satisfies Chain
+
 // Build base config from RainbowKit helpers
 export const wagmiConfig = getDefaultConfig({
 	appName: 'Loops Hacker House',
 	projectId,
-	chains: [mainnet, base, arbitrum, filecoinCalibration],
+	chains: [mainnet, base, arbitrum, filecoinCalibration, worldChainSepolia],
 	ssr: false
 })
 
