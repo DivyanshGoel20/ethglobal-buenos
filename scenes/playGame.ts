@@ -16,6 +16,10 @@ export class PlayGame extends Phaser.Scene {
     player      : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;    // the player
     enemyGroup  : Phaser.Physics.Arcade.Group;                          // group with all enemies
     enemySprites: string[] = [];                                        // array of available enemy sprite keys
+    playerHealth: number = GameOptions.playerMaxHealth;                 // current player health
+    healthBarBg : Phaser.GameObjects.Rectangle | null = null;           // health bar background
+    healthBarFg  : Phaser.GameObjects.Rectangle | null = null;           // health bar foreground (actual health)
+    isInvulnerable : boolean = false;                                    // invulnerability flag to prevent multiple hits
 
     // method to be called once the instance has been created
     create(data? : any) : void {
@@ -25,10 +29,17 @@ export class PlayGame extends Phaser.Scene {
             this.enemySprites = data.enemySprites;
         }
 
+        // initialize player health
+        this.playerHealth = GameOptions.playerMaxHealth;
+        this.isInvulnerable = false;
+
         // add player, enemies group and bullets group
         this.player = this.physics.add.sprite(GameOptions.gameSize.width / 2, GameOptions.gameSize.height / 2, 'player');
         this.enemyGroup = this.physics.add.group();
         const bulletGroup : Phaser.Physics.Arcade.Group = this.physics.add.group();
+
+        // create health bar
+        this.createHealthBar();
 
         // set keyboard controls
         const keyboard : Phaser.Input.Keyboard.KeyboardPlugin = this.input.keyboard as Phaser.Input.Keyboard.KeyboardPlugin; 
@@ -93,8 +104,80 @@ export class PlayGame extends Phaser.Scene {
 
         // player Vs enemy collision
         this.physics.add.collider(this.player, this.enemyGroup, () => {
-            this.scene.restart();
+            this.takeDamage();
         });  
+    }
+
+    // method to create health bar UI
+    createHealthBar() : void {
+        // health bar background (red/dark)
+        this.healthBarBg = this.add.rectangle(
+            this.player.x,
+            this.player.y + GameOptions.healthBarOffsetY,
+            GameOptions.healthBarWidth,
+            GameOptions.healthBarHeight,
+            0x000000
+        );
+        this.healthBarBg.setDepth(1000); // make sure it's visible
+
+        // health bar foreground (green/red based on health)
+        this.healthBarFg = this.add.rectangle(
+            this.player.x - (GameOptions.healthBarWidth / 2) + (GameOptions.healthBarWidth / 2),
+            this.player.y + GameOptions.healthBarOffsetY,
+            GameOptions.healthBarWidth,
+            GameOptions.healthBarHeight,
+            0x00ff00
+        );
+        this.healthBarFg.setOrigin(0, 0.5); // set origin to left center for easy scaling
+        this.healthBarFg.setDepth(1001); // above background
+    }
+
+    // method to update health bar position and visual
+    updateHealthBar() : void {
+        if (this.healthBarBg && this.healthBarFg) {
+            // update position to follow player
+            this.healthBarBg.setPosition(this.player.x, this.player.y + GameOptions.healthBarOffsetY);
+            this.healthBarFg.setPosition(
+                this.player.x - (GameOptions.healthBarWidth / 2),
+                this.player.y + GameOptions.healthBarOffsetY
+            );
+
+            // update health bar width based on current health
+            const healthPercentage : number = this.playerHealth / GameOptions.playerMaxHealth;
+            this.healthBarFg.setSize(GameOptions.healthBarWidth * healthPercentage, GameOptions.healthBarHeight);
+
+            // change color based on health (green -> yellow -> red)
+            if (healthPercentage > 0.6) {
+                this.healthBarFg.setFillStyle(0x00ff00); // green
+            } else if (healthPercentage > 0.3) {
+                this.healthBarFg.setFillStyle(0xffff00); // yellow
+            } else {
+                this.healthBarFg.setFillStyle(0xff0000); // red
+            }
+        }
+    }
+
+    // method to handle player taking damage
+    takeDamage() : void {
+        // prevent multiple hits from same collision
+        if (this.isInvulnerable) {
+            return;
+        }
+
+        // decrease health
+        this.playerHealth--;
+        this.updateHealthBar();
+
+        // make player invulnerable for a short time to prevent multiple hits
+        this.isInvulnerable = true;
+        this.time.delayedCall(1000, () => { // 1 second invulnerability
+            this.isInvulnerable = false;
+        });
+
+        // restart game if health reaches 0
+        if (this.playerHealth <= 0) {
+            this.scene.restart();
+        }
     }
 
     // metod to be called at each frame
@@ -128,5 +211,8 @@ export class PlayGame extends Phaser.Scene {
         this.enemyGroup.getMatching('visible', true).forEach((enemy : any) => {
             this.physics.moveToObject(enemy, this.player, GameOptions.enemySpeed);
         });
+
+        // update health bar position to follow player
+        this.updateHealthBar();
     }
 }
