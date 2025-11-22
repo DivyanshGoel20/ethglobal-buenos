@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useAccount, useReadContract } from 'wagmi'
 import { formatUnits } from 'viem'
 import { GAME_BANK_ADDRESS, GAME_BANK_ABI, GAME_BANK_CHAIN_ID, TOKEN_INFO, TOKENS } from '../config/contract'
 import { TransactionModal } from './TransactionModal'
+import { Game } from './Game'
 import './Homepage.css'
 
 export function Homepage() {
 	const { isConnected, address } = useAccount()
 	const [depositModalOpen, setDepositModalOpen] = useState(false)
 	const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
+	const [gameStarted, setGameStarted] = useState(false)
 
 	// Fetch user stats
 	const { data: stats, refetch: refetchStats } = useReadContract({
@@ -45,8 +47,7 @@ export function Homepage() {
 	console.log('Homepage - Balances:', balances)
 
 	const handleStartGame = () => {
-		// Placeholder - will be implemented later
-		console.log('Start game clicked')
+		setGameStarted(true)
 	}
 
 	const handleDepositMoney = () => {
@@ -82,6 +83,22 @@ export function Homepage() {
 			refetchBalances()
 		}, 2000)
 	}
+
+	const handleGameClose = () => {
+		setGameStarted(false)
+	}
+
+	// Listen for game over event
+	useEffect(() => {
+		const handleGameOver = () => {
+			setGameStarted(false)
+		}
+
+		window.addEventListener('gameOver', handleGameOver)
+		return () => {
+			window.removeEventListener('gameOver', handleGameOver)
+		}
+	}, [])
 
 	return (
 		<div className="homepage">
@@ -119,9 +136,8 @@ export function Homepage() {
 					)}
 
 					<button 
-						className={`start-game-button ${!isConnected ? 'disabled' : ''}`}
+						className="start-game-button"
 						onClick={handleStartGame}
-						disabled={!isConnected}
 					>
 						Start Game
 					</button>
@@ -139,6 +155,10 @@ export function Homepage() {
 				onClose={handleModalClose}
 				mode="withdraw"
 			/>
+
+			{gameStarted && (
+				<Game onClose={handleGameClose} />
+			)}
 		</div>
 	)
 }
