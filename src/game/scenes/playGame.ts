@@ -725,18 +725,6 @@ export class PlayGame extends Phaser.Scene {
         this.upgradeBarFg.setOrigin(0, 0.5); // left-aligned
         this.upgradeBarFg.setDepth(2001);
         this.upgradeBarFg.setScrollFactor(0); // fixed to camera
-
-        // Label text
-        const labelText = this.add.text(barX, barY - 25, 'Upgrade Progress', {
-            fontSize: '16px',
-            color: '#ffffff',
-            fontFamily: 'Arial',
-            stroke: '#000000',
-            strokeThickness: 2
-        });
-        labelText.setOrigin(0.5, 0.5);
-        labelText.setDepth(2002);
-        labelText.setScrollFactor(0);
     }
 
     // method to start ore spawning
