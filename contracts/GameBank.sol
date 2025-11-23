@@ -40,7 +40,9 @@ contract GameBank is ReentrancyGuard {
 
     // Game parameters
     uint256 public constant K = 4e18;               // multiplier for bullets (scaled)
-    uint256 public constant BASE_DAMAGE = 10e18;    // base damage scaling
+    uint256 public constant BASE_DAMAGE = 10;    // base damage scaling
+
+    uint256 public pyth_price;
 
     IPyth public immutable pyth;
 
@@ -55,6 +57,10 @@ contract GameBank is ReentrancyGuard {
     }
 
     mapping(address => UserData) internal users;
+
+    uint256 internal priceWBTC;   // 1e8 decimals
+    uint256 internal priceWETH;   // 1e8 decimals
+    uint256 internal priceWLD;    // 1e8 decimals
 
     /* -------------------------------------------------------------------------- */
     /*                                CONSTRUCTOR                                 */
@@ -83,21 +89,38 @@ contract GameBank is ReentrancyGuard {
         uint256 fee = pyth.getUpdateFee(priceUpdate);
         pyth.updatePriceFeeds{value: fee}(priceUpdate);
 
+        if (msg.value > fee) {
+            payable(msg.sender).transfer(msg.value - fee);
+        }
         // Read price (<= 60 seconds old)
         PythStructs.Price memory p =
             pyth.getPriceNoOlderThan(_getFeed(token), 60);
 
+        pyth_price = uint256(int256(p.price));
+
         // price.price has decimals = 10^p.expo
         // We normalize to 1e8 USD precision
+        uint256 normalized;
         if (p.expo < -8) {
-            uint256 factor = uint256(int256(-8 - p.expo));
-            return uint256(uint64(p.price)) / (10 ** factor);
+            normalized = uint256(uint64(p.price)) / (10 ** uint256(int256(-8 - p.expo)));
         } else if (p.expo > -8) {
-            uint256 factor = uint256(int256(p.expo + 8));
-            return uint256(uint64(p.price)) * (10 ** factor);
+            normalized = uint256(uint64(p.price)) * (10 ** uint256(int256(p.expo + 8)));
+        } else {
+            normalized = uint256(uint64(p.price));
         }
 
-        return uint256(uint64(p.price)); // already 1e8 scaled
+        if (token == WBTC) priceWBTC = normalized;
+        else if (token == WETH) priceWETH = normalized;
+        else priceWLD = normalized;
+
+        return uint256(int256(p.price));
+    }
+
+    function getLatestPrice() public view returns (int64 price, uint64 conf, uint publishTime) {
+        // Returns latest price no older than 60 seconds
+        bytes32 priceFeedId = 0xd6835ad1f773de4a378115eb6824bd0c0e42d84d1c84d9750e853fb6b6c7794a; // WLD/USD
+        PythStructs.Price memory p = pyth.getPriceNoOlderThan(priceFeedId, 60);
+        return (p.price, p.conf, p.publishTime);
     }
 
     /* -------------------------------------------------------------------------- */
@@ -107,38 +130,35 @@ contract GameBank is ReentrancyGuard {
     function _recomputeStats(address user) internal {
         UserData storage u = users[user];
 
-        // Compute total USD across all tokens
-        uint256 totalUsd = 0;
+        uint256 usd = 0;
 
-        // WBTC
-        if (u.tokenBalance[WBTC] > 0) {
-            uint256 price = _cachedPriceWBTC;
-            totalUsd += (u.tokenBalance[WBTC] * price) / 1e8;
-        }
-        // WETH
-        if (u.tokenBalance[WETH] > 0) {
-            uint256 price = _cachedPriceWETH;
-            totalUsd += (u.tokenBalance[WETH] * price) / 1e8;
-        }
-        // WLD
-        if (u.tokenBalance[WLD] > 0) {
-            uint256 price = _cachedPriceWLD;
-            totalUsd += (u.tokenBalance[WLD] * price) / 1e8;
-        }
+        if (u.tokenBalance[WBTC] > 0)
+            usd += (u.tokenBalance[WBTC] * priceWBTC) / 1e8;
+
+        if (u.tokenBalance[WETH] > 0)
+            usd += (u.tokenBalance[WETH] * priceWETH) / 1e8;
+
+        if (u.tokenBalance[WLD] > 0)
+            usd += (u.tokenBalance[WLD] * priceWLD) / 1e8;
 
         // ---- Bullets ----
         // bullets = floor(k * sqrt(USD))
-        uint256 sqrtUsd = Math.sqrt(totalUsd * 1e18); // upscale
-        u.bullets = (K * sqrtUsd) / 1e36; // normalize back
+        uint256 sqrtUsd = Math.sqrt(usd * 1e18);
+        u.bullets = (K * sqrtUsd) / 1e36;
 
         // ---- Damage ----
-        // Damage = BaseDamage * log10(price + 1)
-        // Approx log10: ln(x)/ln(10)
-        uint256 combinedPrice = _cachedPriceWETH; // e.g., using WETH price for damage scaling
-        uint256 lnVal = _ln(combinedPrice + 1e8); // scaled natural log
-        uint256 ln10 = 2302585092994045; // ln(10)*1e14 approx
+        // _calculateDamage(usd);
+    }
 
-        u.damage = (BASE_DAMAGE * lnVal) / ln10;
+    function _calculateDamage(uint256 usd) public pure returns (uint256) {
+        // tokenPrice expected to be 1e8 decimals (e.g. $0.60 = 60_000_000)
+
+        uint256 x = (usd / 1e8) + 10;
+
+        uint256 dmg = _ln(x) * BASE_DAMAGE;                // 1e14 precision
+        // uint256 ln10 = 2302585092994045;     // ln(10) * 1e14
+
+        return dmg;
     }
 
     /* -------------------------------------------------------------------------- */
@@ -150,8 +170,8 @@ contract GameBank is ReentrancyGuard {
     uint256 internal _cachedPriceWLD;
 
     function _updateAllPrices(bytes[] calldata priceUpdate) internal {
-        _cachedPriceWBTC = _getPrice(WBTC, priceUpdate);
-        _cachedPriceWETH = _getPrice(WETH, priceUpdate);
+        // _cachedPriceWBTC = _getPrice(WBTC, priceUpdate);
+        // _cachedPriceWETH = _getPrice(WETH, priceUpdate);
         _cachedPriceWLD  = _getPrice(WLD,  priceUpdate);
     }
 
@@ -164,18 +184,23 @@ contract GameBank is ReentrancyGuard {
         uint256 amount,
         bytes[] calldata priceUpdate
     ) external payable nonReentrant {
-        if (token != WBTC && token != WETH && token != WLD) revert UnsupportedToken();
-        require(amount > 0);
+        UserData storage u = users[msg.sender];
 
-        _updateAllPrices(priceUpdate);
+        if (token != WBTC && token != WETH && token != WLD) revert UnsupportedToken();
+        // require(amount > 0);
+
+        uint256 cachedPrice = _getPrice(token, priceUpdate);
 
         // Transfer tokens
-        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        // IERC20(token).approve(address(this), amount);
+        require(IERC20(token).transferFrom(msg.sender, address(this), amount), "transferFrom failed");
 
         // Update internals
         users[msg.sender].tokenBalance[token] += amount;
 
         _recomputeStats(msg.sender);
+
+        u.damage = _calculateDamage(cachedPrice);
     }
 
     function withdraw(
@@ -188,13 +213,16 @@ contract GameBank is ReentrancyGuard {
         UserData storage u = users[msg.sender];
         if (u.tokenBalance[token] < amount) revert InsufficientBalance();
 
-        _updateAllPrices(priceUpdate);
+        uint256 cachedPrice = _getPrice(token, priceUpdate);
 
         u.tokenBalance[token] -= amount;
 
         IERC20(token).transfer(msg.sender, amount);
 
         _recomputeStats(msg.sender);
+
+        u.damage = _calculateDamage(cachedPrice);    
+        
     }
 
     /* -------------------------------------------------------------------------- */
@@ -233,6 +261,6 @@ contract GameBank is ReentrancyGuard {
         // But since price is large, use change-of-base:
         // ln(x) ≈ log2(x) * ln(2)
         uint256 log2x = Math.log2(x);
-        return (log2x * 6931471805599453) / 1e14; // ln(2)*1e14
+        return (log2x * 6931471805599453) / 1e16; // ln(2)*1e14
     }
 }

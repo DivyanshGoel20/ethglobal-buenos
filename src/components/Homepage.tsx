@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { useAccount, useReadContract } from 'wagmi'
+import { useAccount, useReadContract, useChainId } from 'wagmi'
 import { formatUnits } from 'viem'
 import { GAME_BANK_ADDRESS, GAME_BANK_ABI, GAME_BANK_CHAIN_ID, TOKEN_INFO, TOKENS } from '../config/contract'
 import { TransactionModal } from './TransactionModal'
@@ -9,42 +9,35 @@ import './Homepage.css'
 
 export function Homepage() {
 	const { isConnected, address } = useAccount()
+	const chainId = useChainId()
 	const [depositModalOpen, setDepositModalOpen] = useState(false)
 	const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
 	const [gameStarted, setGameStarted] = useState(false)
 
-	// Fetch user stats
+	// Check if user is on the correct chain
+	const isCorrectChain = chainId === GAME_BANK_CHAIN_ID
+
+	// Fetch user stats - only when on correct chain
 	const { data: stats, refetch: refetchStats } = useReadContract({
 		address: GAME_BANK_ADDRESS,
 		abi: GAME_BANK_ABI,
 		functionName: 'getStats',
 		args: address ? [address] : undefined,
-		chainId: GAME_BANK_CHAIN_ID,
 		query: {
-			enabled: !!address && isConnected,
-			// Disable auto-refetch to avoid CORS issues - user can manually refresh
-			refetchInterval: false,
+			enabled: !!address && isConnected && isCorrectChain,
 		},
 	})
 
-	// Fetch user balances
+	// Fetch user balances - only when on correct chain
 	const { data: balances, refetch: refetchBalances } = useReadContract({
 		address: GAME_BANK_ADDRESS,
 		abi: GAME_BANK_ABI,
 		functionName: 'getBalances',
 		args: address ? [address] : undefined,
-		chainId: GAME_BANK_CHAIN_ID,
 		query: {
-			enabled: !!address && isConnected,
-			// Disable auto-refetch to avoid CORS issues - user can manually refresh
-			refetchInterval: false,
+			enabled: !!address && isConnected && isCorrectChain,
 		},
 	})
-
-	// Debug: Log token addresses
-	console.log('Homepage - WLD token address:', TOKENS.WLD)
-	console.log('Homepage - User address:', address)
-	console.log('Homepage - Balances:', balances)
 
 	const handleStartGame = () => {
 		// Try to open in a new window first (works in regular browsers)
@@ -123,20 +116,27 @@ export function Homepage() {
 					<ConnectButton />
 					
 					{isConnected && (
-						<div className="game-stats">
-							<div className="stat-item">
-								<span className="stat-label">Money Deposited:</span>
-								<span className="stat-value">{totalDeposited}</span>
+						<>
+							{!isCorrectChain && (
+								<div className="chain-warning">
+									Please switch to World Chain Sepolia (Chain ID: {GAME_BANK_CHAIN_ID})
+								</div>
+							)}
+							<div className="game-stats">
+								<div className="stat-item">
+									<span className="stat-label">Money Deposited:</span>
+									<span className="stat-value">{totalDeposited}</span>
+								</div>
+								<div className="stat-item">
+									<span className="stat-label">Number of Bullets:</span>
+									<span className="stat-value">{parseFloat(bullets).toFixed(2)}</span>
+								</div>
+								<div className="stat-item">
+									<span className="stat-label">Damage Power:</span>
+									<span className="stat-value">{parseFloat(damage).toFixed(2)}</span>
+								</div>
 							</div>
-							<div className="stat-item">
-								<span className="stat-label">Number of Bullets:</span>
-								<span className="stat-value">{parseFloat(bullets).toFixed(2)}</span>
-							</div>
-							<div className="stat-item">
-								<span className="stat-label">Damage Power:</span>
-								<span className="stat-value">{parseFloat(damage).toFixed(2)}</span>
-							</div>
-						</div>
+						</>
 					)}
 
 					{isConnected && (

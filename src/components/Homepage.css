@@ -151,6 +151,17 @@
 	transform: translateY(0);
 }
 
+.chain-warning {
+	background: rgba(239, 68, 68, 0.2);
+	border: 1px solid rgba(239, 68, 68, 0.5);
+	color: white;
+	padding: 0.75rem;
+	border-radius: 8px;
+	margin-bottom: 1rem;
+	font-size: 0.9rem;
+	text-align: center;
+}
+
 @media (max-width: 768px) {
 	.homepage {
 		padding: 1rem;

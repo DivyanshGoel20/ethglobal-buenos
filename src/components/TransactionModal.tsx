@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useBalance, useReadContract, useWriteContract, useWaitForTransactionReceipt, useChainId } from 'wagmi'
 import { parseUnits, formatUnits, maxUint256 } from 'viem'
 import { GAME_BANK_ADDRESS, GAME_BANK_ABI, GAME_BANK_CHAIN_ID, TOKENS, TOKEN_INFO, ERC20_ABI } from '../config/contract'
 import { fetchPythPriceUpdates } from '../services/pyth'
@@ -13,6 +13,7 @@ interface TransactionModalProps {
 
 export function TransactionModal({ isOpen, onClose, mode }: TransactionModalProps) {
 	const { address } = useAccount()
+	const chainId = useChainId()
 	const [selectedToken, setSelectedToken] = useState<keyof typeof TOKENS>('WLD')
 	const [amount, setAmount] = useState('')
 	const [isLoading, setIsLoading] = useState(false)
@@ -20,52 +21,25 @@ export function TransactionModal({ isOpen, onClose, mode }: TransactionModalProp
 
 	const tokenAddress = TOKENS[selectedToken]
 	const tokenInfo = TOKEN_INFO[tokenAddress]
+	const isCorrectChain = chainId === GAME_BANK_CHAIN_ID
 
-	// Debug: Log token address being used
-	useEffect(() => {
-		console.log('=== TransactionModal Debug ===')
-		console.log('Selected token:', selectedToken)
-		console.log('Token address:', tokenAddress)
-		console.log('Expected WLD address: 0x814213d11614D8A4Cc1F2e3425Db0F763bca979B')
-		console.log('Addresses match:', tokenAddress.toLowerCase() === '0x814213d11614d8a4cc1f2e3425db0f763bca979b')
-		console.log('User address:', address)
-		console.log('Chain ID:', GAME_BANK_CHAIN_ID)
-	}, [selectedToken, tokenAddress, address])
-
-	// Get user's token balance
-	const { data: tokenBalance, refetch: refetchBalance, isLoading: isLoadingBalance } = useBalance({
+	// Get user's token balance - use wallet's current chain
+	const { data: tokenBalance, refetch: refetchBalance } = useBalance({
 		address,
 		token: tokenAddress as `0x${string}`,
-		chainId: GAME_BANK_CHAIN_ID,
 		query: {
-			enabled: !!address && isOpen,
+			enabled: !!address && isOpen && isCorrectChain,
 		},
 	})
 
-	// Debug: Log balance data
-	useEffect(() => {
-		if (tokenBalance) {
-			console.log('Token balance data:', {
-				value: tokenBalance.value?.toString(),
-				formatted: tokenBalance.formatted,
-				symbol: tokenBalance.symbol,
-				decimals: tokenBalance.decimals,
-			})
-		}
-		if (isLoadingBalance) {
-			console.log('Loading token balance...')
-		}
-	}, [tokenBalance, isLoadingBalance])
-
-	// Get user's deposited balance in contract
+	// Get user's deposited balance in contract - use wallet's current chain
 	const { data: depositedBalances } = useReadContract({
 		address: GAME_BANK_ADDRESS,
 		abi: GAME_BANK_ABI,
 		functionName: 'getBalances',
 		args: address ? [address] : undefined,
-		chainId: GAME_BANK_CHAIN_ID,
 		query: {
-			enabled: !!address && isOpen,
+			enabled: !!address && isOpen && isCorrectChain,
 		},
 	})
 
@@ -74,15 +48,14 @@ export function TransactionModal({ isOpen, onClose, mode }: TransactionModalProp
 		hash,
 	})
 
-	// Get allowance
+	// Get allowance - use wallet's current chain
 	const { data: allowance } = useReadContract({
 		address: tokenAddress as `0x${string}`,
 		abi: ERC20_ABI,
 		functionName: 'allowance',
 		args: address && tokenAddress ? [address, GAME_BANK_ADDRESS] : undefined,
-		chainId: GAME_BANK_CHAIN_ID,
 		query: {
-			enabled: !!address && isOpen && mode === 'deposit',
+			enabled: !!address && isOpen && mode === 'deposit' && isCorrectChain,
 		},
 	})
 
@@ -145,7 +118,6 @@ export function TransactionModal({ isOpen, onClose, mode }: TransactionModalProp
 						abi: ERC20_ABI,
 						functionName: 'approve',
 						args: [GAME_BANK_ADDRESS, maxUint256],
-						chainId: GAME_BANK_CHAIN_ID,
 					}, {
 						onSuccess: async () => {
 							// Wait a bit for approval to be mined, then proceed with deposit
@@ -217,13 +189,12 @@ export function TransactionModal({ isOpen, onClose, mode }: TransactionModalProp
 
 			if (mode === 'deposit') {
 				console.log('Calling deposit function...')
-				writeContract({
-					address: GAME_BANK_ADDRESS,
-					abi: GAME_BANK_ABI,
-					functionName: 'deposit',
-					args: [tokenAddress, amountWei, priceUpdateBytes],
-					chainId: GAME_BANK_CHAIN_ID,
-				}, {
+			writeContract({
+				address: GAME_BANK_ADDRESS,
+				abi: GAME_BANK_ABI,
+				functionName: 'deposit',
+				args: [tokenAddress, amountWei, priceUpdateBytes],
+			}, {
 					onSuccess: (hash) => {
 						console.log('Deposit transaction hash:', hash)
 					},
@@ -240,7 +211,6 @@ export function TransactionModal({ isOpen, onClose, mode }: TransactionModalProp
 					abi: GAME_BANK_ABI,
 					functionName: 'withdraw',
 					args: [tokenAddress, amountWei, priceUpdateBytes],
-					chainId: GAME_BANK_CHAIN_ID,
 				}, {
 					onSuccess: (hash) => {
 						console.log('Withdraw transaction hash:', hash)
@@ -278,12 +248,19 @@ export function TransactionModal({ isOpen, onClose, mode }: TransactionModalProp
 				</div>
 
 				<div className="modal-body">
+					{!isCorrectChain && (
+						<div className="error-message">
+							Please switch to World Chain Sepolia (Chain ID: {GAME_BANK_CHAIN_ID}) to use this feature.
+							Current chain: {chainId}
+						</div>
+					)}
+					
 					<div className="token-selector">
 						<label>Select Token:</label>
 						<select 
 							value={selectedToken} 
 							onChange={(e) => setSelectedToken(e.target.value as keyof typeof TOKENS)}
-							disabled={isLoading}
+							disabled={isLoading || !isCorrectChain}
 						>
 							<option value="WBTC">WBTC</option>
 							<option value="WETH">WETH</option>
@@ -299,20 +276,21 @@ export function TransactionModal({ isOpen, onClose, mode }: TransactionModalProp
 								value={amount}
 								onChange={(e) => setAmount(e.target.value)}
 								placeholder="0.0"
-								disabled={isLoading}
+								disabled={isLoading || !isCorrectChain}
 								step="any"
 								min="0"
 							/>
 							<button 
 								className="max-button" 
 								onClick={handleMax}
-								disabled={isLoading}
+								disabled={isLoading || !isCorrectChain}
 							>
 								MAX
 							</button>
 						</div>
 						<div className="balance-info">
 							Available: {parseFloat(availableBalance).toFixed(6)} {tokenInfo.symbol}
+							{!isCorrectChain && ' (Switch to correct chain)'}
 						</div>
 					</div>
 
@@ -336,7 +314,7 @@ export function TransactionModal({ isOpen, onClose, mode }: TransactionModalProp
 					<button 
 						className="modal-button submit-button" 
 						onClick={handleSubmit}
-						disabled={isLoading || isPending || isConfirming || !amount || parseFloat(amount) <= 0}
+						disabled={isLoading || isPending || isConfirming || !amount || parseFloat(amount) <= 0 || !isCorrectChain}
 					>
 						{isLoading || isPending || isConfirming 
 							? 'Processing...' 

@@ -1,17 +1,13 @@
 // Contract configuration
 export const GAME_BANK_ADDRESS = '0xDdc2567AbCB9eCC1b21A50658219670463607CF9' as const
-export const GAME_BANK_CHAIN_ID = 4801 // World Chain Sepolia
+export const GAME_BANK_CHAIN_ID = 480 // World Chain Sepolia
 
-// Token addresses
+// Token addresses - must match GameBank.sol
 export const TOKENS = {
 	WBTC: '0x03C7054BCB39f7b2e5B2c7AcB37583e32D70Cfa3' as const,
 	WETH: '0x4200000000000000000000000000000000000006' as const,
-	WLD: '0x814213d11614D8A4Cc1F2e3425Db0F763bca979B' as const, // Correct WLD address on World Chain Sepolia
+	WLD: '0x2cFc85d8E48F8EAB294be644d9E25C3030863003' as const, 
 } as const
-
-// Debug: Log token addresses on module load
-console.log('Contract config - WLD token address:', TOKENS.WLD)
-console.log('Contract config - All tokens:', TOKENS)
 
 // Token metadata
 export const TOKEN_INFO = {

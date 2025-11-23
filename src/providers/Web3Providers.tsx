@@ -9,27 +9,50 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ?? 'NO_ID'
 
 // Filecoin Calibration Testnet
-export const filecoinCalibration: Chain = {
-	id: 314159,
-	name: 'Filecoin Calibration',
+// export const filecoinCalibration: Chain = {
+// 	id: 314159,
+// 	name: 'Filecoin Calibration',
+// 	nativeCurrency: {
+// 		name: 'tFIL',
+// 		symbol: 'tFIL',
+// 		decimals: 18,
+// 	},
+// 	rpcUrls: {
+// 		default: {
+// 			http: ['https://api.calibration.node.glif.io/rpc/v1'],
+// 			webSocket: ['wss://api.calibration.node.glif.io/rpc/v1'],
+// 		},
+// 	},
+// 	blockExplorers: {
+// 		default: {
+// 			name: 'Filfox',
+// 			url: 'https://calibration.filfox.info',
+// 		},
+// 	},
+// 	testnet: true,
+// } as const satisfies Chain
+
+// World Chain Mainnet
+export const worldChain: Chain = {
+	id: 480,
+	name: 'Worldchain',
 	nativeCurrency: {
-		name: 'tFIL',
-		symbol: 'tFIL',
+		name: 'Ether',
+		symbol: 'ETH',
 		decimals: 18,
 	},
 	rpcUrls: {
 		default: {
-			http: ['https://api.calibration.node.glif.io/rpc/v1'],
-			webSocket: ['wss://api.calibration.node.glif.io/rpc/v1'],
+			http: ['https://worldchain.drpc.org'],
 		},
 	},
 	blockExplorers: {
 		default: {
-			name: 'Filfox',
-			url: 'https://calibration.filfox.info',
+			name: 'World Chain Explorer',
+			url: 'https://explorer.worldchain.org',
 		},
 	},
-	testnet: true,
+	testnet: false,
 } as const satisfies Chain
 
 // World Chain Sepolia Testnet
@@ -61,7 +84,7 @@ export const worldChainSepolia: Chain = {
 export const wagmiConfig = getDefaultConfig({
 	appName: 'Loops Hacker House',
 	projectId,
-	chains: [mainnet, base, arbitrum, filecoinCalibration, worldChainSepolia],
+	chains: [mainnet, base, arbitrum, worldChain, worldChainSepolia],
 	ssr: false
 })
 
