@@ -24,9 +24,16 @@ export class PlayGame extends Phaser.Scene {
     gameStartTime : number = 0;                                          // game start time in milliseconds
     timerText     : Phaser.GameObjects.Text | null = null;              // timer display text
     waveText      : Phaser.GameObjects.Text | null = null;              // wave announcement text
+    bulletsText   : Phaser.GameObjects.Text | null = null;              // bullets count display text
     currentWave   : number = 1;                                         // current wave number
     enemyTimerEvent : Phaser.Time.TimerEvent | null = null;             // timer event for enemies
     bulletTimerEvent : Phaser.Time.TimerEvent | null = null;            // timer event for bullets
+    bulletsRemaining : number = 0;                                       // remaining bullets count
+    bulletDamage : number = 1;                                           // damage per bullet (from contract)
+    enemyHealthMap : Map<Phaser.Types.Physics.Arcade.SpriteWithDynamicBody, number> = new Map(); // map enemies to their health
+    activeBullets : Set<Phaser.Types.Physics.Arcade.SpriteWithDynamicBody> = new Set(); // track bullets in flight
+    backgroundStars : any = null; // background stars particle system
+    backgroundGraphics : Phaser.GameObjects.Graphics | null = null; // background graphics
 
     // method to be called once the instance has been created
     create(data? : any) : void {
@@ -36,6 +43,17 @@ export class PlayGame extends Phaser.Scene {
             this.enemySprites = data.enemySprites;
         }
 
+        // get initial bullets and damage from scene data
+        this.bulletsRemaining = (data && data.initialBullets) ? data.initialBullets : 0;
+        this.bulletDamage = (data && data.initialDamage) ? data.initialDamage : 1;
+        console.log('Game started with bullets:', this.bulletsRemaining, 'and damage per bullet:', this.bulletDamage);
+        
+        // If damage is 0 or very small, default to 1 to ensure enemies can be killed
+        if (this.bulletDamage <= 0) {
+            console.warn('Invalid damage value from contract, defaulting to 1');
+            this.bulletDamage = 1;
+        }
+
         // initialize player health
         this.playerHealth = GameOptions.playerMaxHealth;
         this.isInvulnerable = false;
@@ -43,6 +61,9 @@ export class PlayGame extends Phaser.Scene {
         // initialize timer and wave
         this.gameStartTime = this.time.now;
         this.currentWave = 1;
+        
+        // initialize enemy health map
+        this.enemyHealthMap.clear();
 
         // set world bounds to map size (this defines the playable area)
         this.physics.world.setBounds(0, 0, GameOptions.mapSize.width, GameOptions.mapSize.height);
@@ -59,6 +80,9 @@ export class PlayGame extends Phaser.Scene {
         // make camera follow player
         this.cameras.main.startFollow(this.player, true, 0.1, 0.1); // smooth camera follow
 
+        // create cool background
+        this.createBackground();
+        
         // create boundary border
         this.createBoundaryBorder();
 
@@ -70,6 +94,9 @@ export class PlayGame extends Phaser.Scene {
 
         // create timer display
         this.createTimerDisplay();
+
+        // create bullets display
+        this.createBulletsDisplay();
 
         // show initial wave announcement
         this.showWaveAnnouncement(1);
@@ -110,6 +137,11 @@ export class PlayGame extends Phaser.Scene {
                 const enemy : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody = this.physics.add.sprite(clampedX, clampedY, randomEnemyKey);
                 // set consistent size for all enemy tokens (increased from 60x60 to 80x80)
                 enemy.setDisplaySize(80, 80);
+                
+                // assign random health (0-50)
+                const enemyHealth : number = Math.floor(Math.random() * 51); // 0 to 50 inclusive
+                this.enemyHealthMap.set(enemy, enemyHealth);
+                
                 this.enemyGroup.add(enemy); 
             },
         });
@@ -120,6 +152,13 @@ export class PlayGame extends Phaser.Scene {
             loop        : true,
             callback    : () => {
                 if (!this.player || !this.enemyGroup || !this.bulletGroup) return;
+                
+                // Check if we have bullets remaining
+                if (this.bulletsRemaining <= 0) {
+                    // No bullets left, end game
+                    this.endGame();
+                    return;
+                }
                 
                 const closestEnemy : any = this.physics.closest(this.player, this.enemyGroup.getMatching('visible', true));
                 if (closestEnemy != null) {
@@ -135,8 +174,25 @@ export class PlayGame extends Phaser.Scene {
                     // set collision body size (proportionally increased)
                     bullet.body.setSize(35, 35);
                     
+                    // Store reference to target enemy on bullet for damage calculation
+                    (bullet as any).targetEnemy = closestEnemy;
+                    (bullet as any).hasHitEnemy = false; // Track if bullet has hit an enemy
+                    
+                    // Add bullet to active bullets set (to track misses)
+                    this.activeBullets.add(bullet);
+                    
                     this.bulletGroup.add(bullet); 
                     this.physics.moveToObject(bullet, closestEnemy, GameOptions.bulletSpeed);
+                    
+                    // Set up timeout to detect if bullet misses (goes off-screen or times out)
+                    // Bullet will be removed after 5 seconds if it hasn't hit anything
+                    this.time.delayedCall(5000, () => {
+                        // Check if bullet is still active and hasn't hit anything
+                        if (this.activeBullets.has(bullet) && !(bullet as any).hasHitEnemy) {
+                            // Bullet missed - count it and remove
+                            this.handleBulletMiss(bullet);
+                        }
+                    });
                 }
             },
         });
@@ -144,10 +200,33 @@ export class PlayGame extends Phaser.Scene {
         // bullet Vs enemy collision
         if (this.bulletGroup && this.enemyGroup) {
             this.physics.add.collider(this.bulletGroup, this.enemyGroup, (bullet : any, enemy : any) => {
+                // Mark bullet as having hit an enemy (so it won't be counted as a miss)
+                bullet.hasHitEnemy = true;
+                
+                // Remove bullet from active bullets set (hit bullets don't count)
+                this.activeBullets.delete(bullet);
+                
+                // Remove bullet
                 this.bulletGroup!.killAndHide(bullet);
                 bullet.body.checkCollision.none = true;
-                this.enemyGroup!.killAndHide(enemy);
-                enemy.body.checkCollision.none = true;
+                
+                // Deal damage to enemy using the damage value from the contract
+                const currentHealth = this.enemyHealthMap.get(enemy) ?? 0;
+                // Use bulletDamage from contract, but ensure it's at least 1
+                const damageToDeal = Math.max(1, Math.floor(this.bulletDamage));
+                const newHealth = Math.max(0, currentHealth - damageToDeal);
+                
+                console.log(`Enemy hit! Health: ${currentHealth} -> ${newHealth} (damage: ${damageToDeal}) - Bullet NOT counted`);
+                
+                if (newHealth <= 0) {
+                    // Enemy is dead, remove it
+                    this.enemyHealthMap.delete(enemy);
+                    this.enemyGroup!.killAndHide(enemy);
+                    enemy.body.checkCollision.none = true;
+                } else {
+                    // Enemy still alive, update health
+                    this.enemyHealthMap.set(enemy, newHealth);
+                }
             });
         }
 
@@ -183,6 +262,103 @@ export class PlayGame extends Phaser.Scene {
         }
         if (this.bulletGroup) {
             this.bulletGroup.clear(true, true);
+        }
+    }
+
+    // method to create cool background design
+    createBackground() : void {
+        // Create gradient background using graphics
+        this.backgroundGraphics = this.add.graphics();
+        
+        // Draw a radial gradient effect (dark center to slightly lighter edges)
+        const centerX = GameOptions.mapSize.width / 2;
+        const centerY = GameOptions.mapSize.height / 2;
+        const maxRadius = Math.sqrt(centerX * centerX + centerY * centerY);
+        
+        // Draw multiple circles with decreasing opacity for gradient effect
+        for (let i = 0; i < 20; i++) {
+            const radius = (maxRadius / 20) * (i + 1);
+            const alpha = 0.1 - (i * 0.004); // Fade out
+            const color = Phaser.Display.Color.Interpolate.ColorWithColor(
+                Phaser.Display.Color.ValueToColor(0x0a0a1a), // Dark blue-purple
+                Phaser.Display.Color.ValueToColor(0x1a1a2e), // Slightly lighter
+                i,
+                20
+            );
+            
+            this.backgroundGraphics.fillStyle(Phaser.Display.Color.GetColor(color.r, color.g, color.b), alpha);
+            this.backgroundGraphics.fillCircle(centerX, centerY, radius);
+        }
+        
+        this.backgroundGraphics.setDepth(0); // Behind everything
+        
+        // Create animated stars particle system
+        // Create a simple star texture
+        const starTexture = this.add.graphics();
+        starTexture.fillStyle(0xffffff, 1);
+        starTexture.fillCircle(0, 0, 1);
+        starTexture.generateTexture('star', 2, 2);
+        starTexture.destroy();
+        
+        // Create particle emitter for stars
+        const stars = this.add.particles(0, 0, 'star', {
+            x: { min: 0, max: GameOptions.mapSize.width },
+            y: { min: 0, max: GameOptions.mapSize.height },
+            speed: { min: 5, max: 15 },
+            scale: { start: 0.3, end: 0.1 },
+            alpha: { start: 0.8, end: 0.2 },
+            lifespan: 3000,
+            frequency: 100,
+            tint: [0xffffff, 0xaaaaff, 0x8888ff], // White to light blue stars
+        });
+        
+        stars.setDepth(1); // Above background but below game objects
+        this.backgroundStars = stars;
+        
+        // Create subtle grid pattern
+        const gridGraphics = this.add.graphics();
+        gridGraphics.lineStyle(1, 0x2a2a4a, 0.3); // Subtle grid lines
+        
+        const gridSize = 100;
+        // Vertical lines
+        for (let x = 0; x <= GameOptions.mapSize.width; x += gridSize) {
+            gridGraphics.moveTo(x, 0);
+            gridGraphics.lineTo(x, GameOptions.mapSize.height);
+        }
+        // Horizontal lines
+        for (let y = 0; y <= GameOptions.mapSize.height; y += gridSize) {
+            gridGraphics.moveTo(0, y);
+            gridGraphics.lineTo(GameOptions.mapSize.width, y);
+        }
+        
+        gridGraphics.strokePath();
+        gridGraphics.setDepth(2); // Above stars but below game objects
+        
+        // Add some animated glowing orbs in the background
+        const orbCount = 8;
+        for (let i = 0; i < orbCount; i++) {
+            const orbX = Math.random() * GameOptions.mapSize.width;
+            const orbY = Math.random() * GameOptions.mapSize.height;
+            const orbSize = 30 + Math.random() * 40;
+            const orbColor = Phaser.Display.Color.HSLToColor(
+                Math.random() * 0.2 + 0.6, // Hue between 0.6-0.8 (blue-purple range)
+                0.7, // Saturation
+                0.3 + Math.random() * 0.2 // Lightness
+            );
+            
+            const orb = this.add.circle(orbX, orbY, orbSize, orbColor.color, 0.15);
+            orb.setDepth(1);
+            
+            // Animate orbs with pulsing effect
+            this.tweens.add({
+                targets: orb,
+                alpha: { from: 0.1, to: 0.25 },
+                scale: { from: 0.8, to: 1.2 },
+                duration: 2000 + Math.random() * 2000,
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
         }
     }
 
@@ -352,6 +528,60 @@ export class PlayGame extends Phaser.Scene {
 
         // check for wave changes
         this.checkWaveChange();
+        
+        // Check for bullets that go off-screen (misses)
+        if (this.bulletGroup && this.activeBullets.size > 0) {
+            this.bulletGroup.getMatching('visible', true).forEach((bullet : any) => {
+                // Check if bullet is outside map bounds (missed)
+                if (this.activeBullets.has(bullet) && !bullet.hasHitEnemy) {
+                    const bulletX = bullet.x;
+                    const bulletY = bullet.y;
+                    const margin = 100; // margin outside map bounds
+                    
+                    if (bulletX < -margin || bulletX > GameOptions.mapSize.width + margin ||
+                        bulletY < -margin || bulletY > GameOptions.mapSize.height + margin) {
+                        // Bullet went off-screen - it's a miss
+                        this.handleBulletMiss(bullet);
+                    }
+                }
+            });
+        }
+        
+        // Check if bullets reached 0 during gameplay
+        if (this.bulletsRemaining <= 0 && !this.scene.isPaused()) {
+            this.endGame();
+        }
+    }
+
+    // method to handle bullet miss (bullet didn't hit anything)
+    handleBulletMiss(bullet : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody) : void {
+        // Only count if bullet hasn't hit an enemy
+        if ((bullet as any).hasHitEnemy) {
+            return;
+        }
+        
+        // Remove from active bullets
+        this.activeBullets.delete(bullet);
+        
+        // Decrease bullets by 1 (missed shot counts)
+        this.bulletsRemaining--;
+        this.updateBulletsDisplay();
+        
+        console.log(`Bullet missed! Remaining bullets: ${this.bulletsRemaining}`);
+        
+        // Remove the bullet
+        if (this.bulletGroup) {
+            this.bulletGroup.killAndHide(bullet);
+            bullet.body.checkCollision.none = true;
+        }
+        
+        // Check if bullets reached 0
+        if (this.bulletsRemaining <= 0) {
+            // End game when bullets reach 0
+            this.time.delayedCall(100, () => {
+                this.endGame();
+            });
+        }
     }
 
     // method to create timer display
@@ -371,6 +601,41 @@ export class PlayGame extends Phaser.Scene {
         this.timerText.setOrigin(0.5, 0.5); // center the text
         this.timerText.setDepth(2000); // make sure it's on top
         this.timerText.setScrollFactor(0); // fixed to camera
+    }
+
+    // method to create bullets display
+    createBulletsDisplay() : void {
+        this.bulletsText = this.add.text(
+            GameOptions.gameSize.width - 20, 
+            60, // positioned at top right
+            `Bullets: ${this.bulletsRemaining}`, 
+            {
+                fontSize: '32px',
+                color: '#ffff00', // yellow color for bullets
+                fontFamily: 'Arial',
+                stroke: '#000000',
+                strokeThickness: 4
+            }
+        );
+        this.bulletsText.setOrigin(1, 0.5); // right-aligned
+        this.bulletsText.setDepth(2000); // make sure it's on top
+        this.bulletsText.setScrollFactor(0); // fixed to camera
+    }
+
+    // method to update bullets display
+    updateBulletsDisplay() : void {
+        if (this.bulletsText) {
+            this.bulletsText.setText(`Bullets: ${this.bulletsRemaining}`);
+            
+            // Change color based on remaining bullets
+            if (this.bulletsRemaining <= 5) {
+                this.bulletsText.setColor('#ff0000'); // red when low
+            } else if (this.bulletsRemaining <= 20) {
+                this.bulletsText.setColor('#ffaa00'); // orange when medium
+            } else {
+                this.bulletsText.setColor('#ffff00'); // yellow when plenty
+            }
+        }
     }
 
     // method to update timer display
@@ -397,7 +662,54 @@ export class PlayGame extends Phaser.Scene {
         if (newWave > this.currentWave) {
             this.currentWave = newWave;
             this.showWaveAnnouncement(newWave);
+            // Trigger wave special effect
+            this.triggerWaveEffect(newWave);
         }
+    }
+
+    // method to trigger cool wave effects
+    triggerWaveEffect(waveNumber : number) : void {
+        if (!this.player || !this.enemyGroup) return;
+        
+        console.log(`Wave ${waveNumber} effect triggered!`);
+        
+        // Spawn many enemies at once in a circle around the player
+        const enemyCount : number = 15 + (waveNumber * 5); // More enemies each wave
+        const spawnRadius : number = 400; // Distance from player
+        
+        for (let i = 0; i < enemyCount; i++) {
+            // Calculate angle for circular spawn
+            const angle : number = (i / enemyCount) * Math.PI * 2;
+            const spawnX : number = this.player.x + Math.cos(angle) * spawnRadius;
+            const spawnY : number = this.player.y + Math.sin(angle) * spawnRadius;
+            
+            // Clamp to map bounds
+            const margin : number = 50;
+            const clampedX : number = Phaser.Math.Clamp(spawnX, margin, GameOptions.mapSize.width - margin);
+            const clampedY : number = Phaser.Math.Clamp(spawnY, margin, GameOptions.mapSize.height - margin);
+            
+            // Randomly select an enemy sprite
+            const randomEnemyKey : string = this.enemySprites[Math.floor(Math.random() * this.enemySprites.length)];
+            const enemy : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody = this.physics.add.sprite(clampedX, clampedY, randomEnemyKey);
+            enemy.setDisplaySize(80, 80);
+            
+            // Assign random health (0-50)
+            const enemyHealth : number = Math.floor(Math.random() * 51);
+            this.enemyHealthMap.set(enemy, enemyHealth);
+            
+            this.enemyGroup.add(enemy);
+            
+            // Add a slight delay between spawns for visual effect
+            this.time.delayedCall(i * 50, () => {
+                // Enemy is already added, just make it visible
+            });
+        }
+        
+        // Visual effect: screen shake
+        this.cameras.main.shake(500, 0.01);
+        
+        // Visual effect: flash
+        this.cameras.main.flash(300, 255, 255, 0); // Yellow flash
     }
 
     // method to show wave announcement

@@ -81,6 +81,12 @@ export function Homepage() {
 	}, [stats, balances, address, isConnected, isLoadingStats, statsError])
 
 	const handleStartGame = () => {
+		// Get current bullets count and damage from contract stats
+		const bulletsCount = bulletsNumber
+		const damageValue = damageNumber
+		
+		console.log('Starting game with bullets:', bulletsCount, 'and damage:', damageValue)
+		
 		// Try to open in a new window first (works in regular browsers)
 		try {
 			// Calculate center position for the window
@@ -95,6 +101,10 @@ export function Homepage() {
 			
 			const left = screenLeft + (screenWidth / 2) - (width / 2)
 			const top = screenTop + (screenHeight / 2) - (height / 2)
+			
+			// Store bullets count and damage in sessionStorage for the new window to access
+			sessionStorage.setItem('gameBullets', bulletsCount.toString())
+			sessionStorage.setItem('gameDamage', damageValue.toString())
 			
 			const newWindow = window.open(
 				'/game.html', 
@@ -325,7 +335,7 @@ export function Homepage() {
 
 			{/* Fallback: Show game in modal if window.open() failed (for mini-apps) */}
 			{gameStarted && (
-				<Game onClose={handleGameClose} />
+				<Game onClose={handleGameClose} initialBullets={bulletsNumber} initialDamage={damageNumber} />
 			)}
 		</div>
 	)

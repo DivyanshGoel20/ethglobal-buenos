@@ -12,6 +12,19 @@ window.addEventListener('DOMContentLoaded', () => {
 		return
 	}
 
+	// Get bullets and damage from sessionStorage (set by Homepage)
+	const bullets = (() => {
+		const stored = sessionStorage.getItem('gameBullets')
+		return stored ? parseInt(stored, 10) : 0
+	})()
+	
+	const damage = (() => {
+		const stored = sessionStorage.getItem('gameDamage')
+		return stored ? parseFloat(stored) : 0
+	})()
+	
+	console.log('Game entry initialized with bullets:', bullets, 'damage:', damage)
+
 	// object to initialize the Scale Manager
 	const scaleObject: Phaser.Types.Core.ScaleConfig = {
 		mode: Phaser.Scale.FIT, // adjust size to automatically fit in the window
@@ -38,6 +51,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
 	// the game itself
 	const game = new Phaser.Game(configObject)
+	
+	// Store bullets and damage in registry for scenes to access
+	game.registry.set('initialBullets', bullets)
+	game.registry.set('initialDamage', damage)
+	console.log('Stored in registry - bullets:', bullets, 'damage:', damage)
 
 	// Listen for game over event and close window
 	window.addEventListener('gameOver', () => {

@@ -29,9 +29,18 @@ export class PreloadAssets extends Phaser.Scene {
   
     // method to be executed when the scene is created
     create() : void {
+        // Get bullets and damage from registry (set by Game component or gameEntry)
+        const bullets = this.registry.get('initialBullets') || 0;
+        const damage = this.registry.get('initialDamage') || 0;
 
-        // pass enemy sprites array to PlayGame scene
-        this.scene.start('PlayGame', { enemySprites: this.enemySprites });
+        console.log('PreloadAssets passing to PlayGame - bullets:', bullets, 'damage:', damage);
+
+        // pass enemy sprites array, bullets, and damage to PlayGame scene
+        this.scene.start('PlayGame', { 
+            enemySprites: this.enemySprites,
+            initialBullets: bullets,
+            initialDamage: damage
+        });
     }
 }
 

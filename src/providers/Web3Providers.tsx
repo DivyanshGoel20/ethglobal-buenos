@@ -80,12 +80,14 @@ export const worldChainSepolia: Chain = {
 	testnet: true,
 } as const satisfies Chain
 
-// Build base config from RainbowKit helpers
+// Build config from RainbowKit helpers
+// getDefaultConfig automatically includes popular wallets including MetaMask, Rainbow, WalletConnect, etc.
+// For Rabby and other wallets, they should be detected automatically if installed
 export const wagmiConfig = getDefaultConfig({
-	appName: 'Loops Hacker House',
+	appName: 'Token Strike',
 	projectId,
 	chains: [mainnet, base, arbitrum, worldChain, worldChainSepolia],
-	ssr: false
+	ssr: false,
 })
 
 const queryClient = new QueryClient()

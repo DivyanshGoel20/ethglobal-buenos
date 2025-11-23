@@ -7,12 +7,27 @@ import './Game.css'
 
 interface GameProps {
 	onClose?: () => void
+	initialBullets?: number
+	initialDamage?: number
 }
 
-export function Game({ onClose }: GameProps) {
+export function Game({ onClose, initialBullets, initialDamage }: GameProps) {
 	const gameRef = useRef<Phaser.Game | null>(null)
 	const containerRef = useRef<HTMLDivElement>(null)
 	const onCloseRef = useRef(onClose)
+	
+	// Get bullets and damage from props or sessionStorage (for new window)
+	const bullets = initialBullets ?? (() => {
+		const stored = sessionStorage.getItem('gameBullets')
+		return stored ? parseInt(stored, 10) : 0
+	})()
+	
+	const damage = initialDamage ?? (() => {
+		const stored = sessionStorage.getItem('gameDamage')
+		return stored ? parseFloat(stored) : 0
+	})()
+	
+	console.log('Game component initialized with bullets:', bullets, 'damage:', damage)
 
 	// Keep onClose ref updated
 	useEffect(() => {
@@ -68,6 +83,10 @@ export function Game({ onClose }: GameProps) {
 			try {
 				if (isMounted && containerRef.current) {
 					gameRef.current = new Phaser.Game(configObject)
+					// Store bullets and damage in registry for scenes to access (after game is created)
+					gameRef.current.registry.set('initialBullets', bullets)
+					gameRef.current.registry.set('initialDamage', damage)
+					console.log('Stored in registry - bullets:', bullets, 'damage:', damage)
 				}
 			} catch (e) {
 				console.error('Error initializing game:', e)
