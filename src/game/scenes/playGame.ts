@@ -53,6 +53,8 @@ export class PlayGame extends Phaser.Scene {
         // add player at center of map (not viewport)
         this.player = this.physics.add.sprite(GameOptions.mapSize.width / 2, GameOptions.mapSize.height / 2, 'player');
         this.player.setCollideWorldBounds(true); // prevent player from going outside map
+        // set player size to be smaller
+        this.player.setDisplaySize(90, 90);
 
         // make camera follow player
         this.cameras.main.startFollow(this.player, true, 0.1, 0.1); // smooth camera follow
@@ -106,8 +108,8 @@ export class PlayGame extends Phaser.Scene {
                 // randomly select an enemy sprite from available options
                 const randomEnemyKey : string = this.enemySprites[Math.floor(Math.random() * this.enemySprites.length)];
                 const enemy : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody = this.physics.add.sprite(clampedX, clampedY, randomEnemyKey);
-                // set consistent size for all enemy tokens
-                enemy.setDisplaySize(60, 60);
+                // set consistent size for all enemy tokens (increased from 60x60 to 80x80)
+                enemy.setDisplaySize(80, 80);
                 this.enemyGroup.add(enemy); 
             },
         });
@@ -123,15 +125,15 @@ export class PlayGame extends Phaser.Scene {
                 if (closestEnemy != null) {
                     const bullet : Phaser.Types.Physics.Arcade.SpriteWithDynamicBody = this.physics.add.sprite(this.player.x, this.player.y, 'bullet');
                     
-                    // set bullet display size (make it smaller)
-                    bullet.setDisplaySize(20, 20);
+                    // set bullet display size (increased from 20x20)
+                    bullet.setDisplaySize(40, 40);
                     
                     // calculate angle from player to enemy and rotate bullet to face that direction
                     const angle : number = Phaser.Math.Angle.Between(this.player.x, this.player.y, closestEnemy.x, closestEnemy.y);
                     bullet.setRotation(angle);
                     
-                    // set smaller collision body (keep collision box small)
-                    bullet.body.setSize(10, 10);
+                    // set collision body size (proportionally increased)
+                    bullet.body.setSize(35, 35);
                     
                     this.bulletGroup.add(bullet); 
                     this.physics.moveToObject(bullet, closestEnemy, GameOptions.bulletSpeed);
@@ -316,6 +318,15 @@ export class PlayGame extends Phaser.Scene {
         }
         
         if (!this.player) return;
+        
+        // flip player sprite based on horizontal movement direction
+        if (movementDirection.x < 0) {
+            // moving left - flip sprite
+            this.player.setFlipX(true);
+        } else if (movementDirection.x > 0) {
+            // moving right - unflip sprite
+            this.player.setFlipX(false);
+        }
         
         // set player velocity according to movement direction
         this.player.setVelocity(0, 0);

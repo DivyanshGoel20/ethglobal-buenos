@@ -11,20 +11,20 @@ export class PreloadAssets extends Phaser.Scene {
     }
 
     // array to store enemy sprite keys
-    enemySprites : string[] = ['eyebot-monster', 'eyelander-monster', 'fire-monster', 'fish-monster', 'sol-monster', 'minion-monster'];
+    enemySprites : string[] = ['eyebot-monster', 'eyelander-monster', 'fire-monster', 'fish-monster', 'red-monster', 'minion-monster', 'grim-monster', 'mage-monster'];
   
     // method to be called during class preloading
     preload() : void {
  
         // load all enemy sprites
         this.enemySprites.forEach((enemyName : string) => {
-            this.load.image(enemyName, `public/enemies/${enemyName}.png`);
+            this.load.image(enemyName, `src/assets/enemies/${enemyName}.png`);
         });
 
         // load player sprite
-        this.load.image('player', 'assets/sprites/player.png');
+        this.load.image('player', 'src/assets/player.png');
 
-        this.load.image('bullet', 'assets/sprites/bullet.png');
+        this.load.image('bullet', 'src/assets/bullet.png');
     }
   
     // method to be executed when the scene is created
