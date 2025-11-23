@@ -5,6 +5,7 @@ import { formatUnits } from 'viem'
 import { GAME_BANK_ADDRESS, GAME_BANK_ABI, TOKEN_INFO, TOKENS } from '../config/contract'
 import { TransactionModal } from './TransactionModal'
 import { Game } from './Game'
+import { useWorldIDVerification } from '../hooks/useWorldIDVerification'
 import './Homepage.css'
 
 export function Homepage() {
@@ -12,6 +13,10 @@ export function Homepage() {
 	const [depositModalOpen, setDepositModalOpen] = useState(false)
 	const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
 	const [gameStarted, setGameStarted] = useState(false)
+	
+	// World ID verification
+	const worldIDVerification = useWorldIDVerification()
+	const { verify, isVerified, isVerifying, error: verificationError, isMiniKitInstalled } = worldIDVerification
 
 	// Fetch user stats
 	const { data: stats, refetch: refetchStats, isLoading: isLoadingStats, error: statsError } = useReadContract({
@@ -78,7 +83,24 @@ export function Homepage() {
 	const handleStartGame = () => {
 		// Try to open in a new window first (works in regular browsers)
 		try {
-			const newWindow = window.open('/game.html', 'game', 'width=900,height=900,resizable=yes,scrollbars=no')
+			// Calculate center position for the window
+			const width = 900
+			const height = 900
+			// Use screen.availWidth/Height to account for taskbars
+			const screenWidth = window.screen.availWidth || window.screen.width
+			const screenHeight = window.screen.availHeight || window.screen.height
+			// Get current window position
+			const screenLeft = window.screenX || 0
+			const screenTop = window.screenY || 0
+			
+			const left = screenLeft + (screenWidth / 2) - (width / 2)
+			const top = screenTop + (screenHeight / 2) - (height / 2)
+			
+			const newWindow = window.open(
+				'/game.html', 
+				'game', 
+				`width=${width},height=${height},left=${Math.round(left)},top=${Math.round(top)},resizable=yes,scrollbars=no`
+			)
 			
 			if (newWindow) {
 				// Successfully opened in new window
@@ -194,7 +216,8 @@ export function Homepage() {
 	return (
 		<div className="homepage">
 			<div className="homepage-container">
-				<h1 className="homepage-title">Game Title</h1>
+				<h1 className="homepage-title">Token Strike</h1>
+				<p className="homepage-subtitle">On-chain Gaming with Real Assets</p>
 				<div className="homepage-buttons">
 					<ConnectButton />
 					
@@ -214,7 +237,7 @@ export function Homepage() {
 									</span>
 								</div>
 								{statsError && (
-									<div style={{ color: 'red', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+									<div className="error-message">
 										Error: {statsError.message}
 									</div>
 								)}
@@ -245,14 +268,37 @@ export function Homepage() {
 					)}
 
 					{isConnected && (
-						<div className="wallet-actions">
-							<button className="action-button deposit-button" onClick={handleDepositMoney}>
-								Deposit Money
-							</button>
-							<button className="action-button retrieve-button" onClick={handleRetrieveMoney}>
-								Retrieve Money
-							</button>
-						</div>
+						<>
+							<div className="wallet-actions">
+								<button className="action-button deposit-button" onClick={handleDepositMoney}>
+									Deposit Money
+								</button>
+								<button className="action-button retrieve-button" onClick={handleRetrieveMoney}>
+									Retrieve Money
+								</button>
+							</div>
+							
+							<div className="world-id-section">
+								{!isVerified ? (
+									<button 
+										className="action-button verify-button" 
+										onClick={() => verify()}
+										disabled={isVerifying || !isMiniKitInstalled}
+									>
+										{isVerifying ? 'Verifying...' : isMiniKitInstalled ? 'Verify with World ID' : 'World ID Not Available'}
+									</button>
+								) : (
+									<div className="verification-success">
+										✓ Verified with World ID
+									</div>
+								)}
+								{verificationError && (
+									<div className="verification-error">
+										{verificationError}
+									</div>
+								)}
+							</div>
+						</>
 					)}
 
 					<button 
